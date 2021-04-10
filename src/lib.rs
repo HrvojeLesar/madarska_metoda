@@ -1,4 +1,5 @@
 use std::time::Instant;
+
 pub enum Position {
     Row,
     Column,
@@ -10,6 +11,8 @@ pub struct Matrix {
     columns: usize,
     matrix: Vec<Vec<i32>>,
 }
+
+static mut iteracija: i32 = 0;
 
 impl Matrix {
     fn new_empty(row: usize, column: usize) -> Self {
@@ -181,9 +184,15 @@ impl MadarskaMetoda {
             // let (crossed, _assigned) = Self::second_step(&calculating_matrix);
             let (crossed, _assigned) = Self::second_step_refactor(&calculating_matrix);
             assigned = _assigned;
-            if crossed.len() == starting_matrix.rows {
+            // println!("Assigned num: {}", assigned.len());
+            // println!("Crossed num: {}", crossed.len());
+            if assigned.len() == starting_matrix.rows {
                 // println!("Crossed: {:?}", crossed);
                 break;
+            }
+            unsafe {
+                iteracija += 1;
+                // println!("Iteracija: {:?}", iteracija);
             }
             calculating_matrix = Self::third_step(calculating_matrix, &crossed);
         }
@@ -194,7 +203,12 @@ impl MadarskaMetoda {
 
         let mut result = 0;
         // println!("Assigned:\n{:?}", assigned);
-        assigned.iter().for_each(|(row, col)| { result += starting_matrix.matrix[*row][*col]});
+        // unsafe {
+        //     println!("Iteracija: {:?}", iteracija);
+        // }
+        assigned.sort_by(|a, b| a.cmp(&b));
+        assigned.iter().enumerate().for_each(|(index ,(row, col))| { /*println!("worker {} <-- task {}", index + 1, col + 1 );*/ result += starting_matrix.matrix[*row][*col]});
+        // assigned.iter().for_each(|(row, col)| { result += starting_matrix.matrix[*row][*col]});
         // optimal_result_positions.iter().for_each(|(row, col)| { result += starting_matrix.matrix[*row][*col]});
         result
     }
@@ -379,6 +393,7 @@ impl MadarskaMetoda {
             //         }
             //     }
             // }
+            
 
             for i in 0..matrix.rows {
                 if marked.contains(&(i, 'R')) { continue; }
@@ -392,6 +407,7 @@ impl MadarskaMetoda {
                     }
                 }
             }
+
 
             // for i in 0..matrix.rows {
             //     if marked.contains(&(i, 'R')) { continue; }
@@ -505,10 +521,12 @@ impl MadarskaMetoda {
     }
 
     fn second_step_refactor(matrix: &Matrix) -> (Crossed, Vec<(usize, usize)>) {
+
         let mut marked: Crossed = Vec::new();
         let mut assigned: Vec<(usize, usize)> = Vec::new();
 
         let zero_pos = matrix.find_pos(0);
+
         loop {
             let mut change_occured= false;
             for (row, col) in &zero_pos {
@@ -529,11 +547,9 @@ impl MadarskaMetoda {
                     break;
                 }
             }
-            if !change_occured { break; }
-        }
 
-        loop {
-            let mut change_occured= false;
+            if change_occured { continue; }
+
             for (row, col) in &zero_pos {
                 if marked.contains(&(*row, 'R')) || marked.contains(&(*col, 'C')) { continue; }
                 let zeros_in_col = zero_pos.iter().filter(|(_row, _col)| {
@@ -552,20 +568,23 @@ impl MadarskaMetoda {
                     break;
                 }
             }
-            if !change_occured { break; }
-        }
 
-        for i in 0..matrix.rows {
-            if marked.contains(&(i, 'R')) { continue; }
-            for j in 0..matrix.columns {
-                if marked.contains(&(j, 'C')) { continue; }
-                if matrix.matrix[i][j] == 0 {
-                    marked.push((i, 'R'));
-                    marked.push((j, 'C'));
-                    assigned.push((i, j));
+            if change_occured { continue; }
+
+            for (row, col) in &zero_pos {
+                if assigned.contains(&(*row, *col)) { continue; }
+                if marked.contains(&(*row, 'R')) || marked.contains(&(*col, 'C')) { continue; }
+                    marked.push((*row, 'R'));
+                    marked.push((*col, 'C'));
+                    assigned.push((*row, *col));
+                    change_occured = true;
                     break;
-                }
             }
+
+
+            if change_occured { continue; }
+
+            if !change_occured { break; }
         }
 
         assigned.sort_by(|a, b| a.cmp(&b));
@@ -573,13 +592,10 @@ impl MadarskaMetoda {
         marked.clear();
 
         for i in 0..matrix.rows {
-            if assigned.iter().find(|(row, _)| *row == i) == None {
+            if assigned.iter().find(|(row, _)| *row == i) == None && !marked.contains(&(i, 'R')) {
                 marked.push((i, 'R'));
             }
         }
-        // println!("{:?}", marked);
-
-        // od tud
 
         loop {
             let changed = marked.len();
@@ -593,7 +609,6 @@ impl MadarskaMetoda {
                     if *val == 0 {
                         if !marked.contains(&(index, 'C')) {
                             marked.push((index, 'C'));
-                            // println!("{:?}", marked);
                         }
                     }
                 });
@@ -609,17 +624,14 @@ impl MadarskaMetoda {
                     if assigned.contains(&(index, col_index)) {
                         if !marked.contains(&(index, 'R')) {
                             marked.push((index, 'R'));
-                            // println!("{:?}", marked);
                         }
                     }
                 });
             }
 
+
             if changed == marked.len() { break; }
         }
-
-
-        // do tud premeniti
 
 
         let marked_clone = marked.clone();
@@ -656,6 +668,7 @@ impl MadarskaMetoda {
                 non_crossed.push(matrix.matrix[i][j].clone());
             }
         }
+
         *non_crossed.iter().min().unwrap()
     }
 
@@ -1180,7 +1193,7 @@ mod tests {
                 vec![31, 67, 59, 3, 13, 36, 67, 82, 99, 63, 11, 26, 51, 25, 68, 34, 43, 29, 88, 57, 95, 1, 84, 57, 31, 47, 70, 17, 19, 78, 100, 18, 24, 24, 76, 14, 21, 57, 44, 23, 55, 89, 67, 68, 56, 99, 14, 62, 88, 3, 5, 77, 70, 79, 1, 69, 69, 53, 49, 95, 80, 20, 3, 19, 73, 51, 24, 84, 97, 38, 1, 99, 83, 15, 29, 38, 60, 99, 44, 18, 94, 50, 38, 99, 34, 9, 17, 46, 92, 26, 43, 40, 9, 3, 29, 18, 49, 50, 64, 74],
             ]);
 
-        let res = MadarskaMetoda::solve_timed(&matrica);
-        println!("{}", res);
+		
+        assert_eq!(236, MadarskaMetoda::solve_timed(&matrica));
     }
 }
