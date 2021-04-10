@@ -178,10 +178,11 @@ impl MadarskaMetoda {
         calculating_matrix = Self::first_step(calculating_matrix);
         let mut assigned: Vec<(usize, usize)>;
         loop {
-            let (crossed, _assigned) = Self::second_step(&calculating_matrix);
+            // let (crossed, _assigned) = Self::second_step(&calculating_matrix);
+            let (crossed, _assigned) = Self::second_step_refactor(&calculating_matrix);
             assigned = _assigned;
-            // println!("{:?}", crossed);
             if crossed.len() == starting_matrix.rows {
+                // println!("Crossed: {:?}", crossed);
                 break;
             }
             calculating_matrix = Self::third_step(calculating_matrix, &crossed);
@@ -192,6 +193,7 @@ impl MadarskaMetoda {
         // println!("{:?}", optimal_result_positions);
 
         let mut result = 0;
+        // println!("Assigned:\n{:?}", assigned);
         assigned.iter().for_each(|(row, col)| { result += starting_matrix.matrix[*row][*col]});
         // optimal_result_positions.iter().for_each(|(row, col)| { result += starting_matrix.matrix[*row][*col]});
         result
@@ -275,29 +277,108 @@ impl MadarskaMetoda {
             //     }
             // }
 
-            let mut col_pos;
-            for i in 0..matrix.rows {
-                if matrix.count(i, Position::Row, 0) == 1 {
-                    col_pos = matrix.find_val(i, Position::Row, 0);
-                    if !marked.contains(&(i, 'R')) && !marked.contains(&(col_pos, 'C')) {
-                        marked.push((i, 'R'));
-                        marked.push((col_pos, 'C'));
-                        assigned.push((i, col_pos));
+            
+            // let mut col_pos;
+            // let mut row_pos;
+            // for i in 0..matrix.rows {
+            //     if matrix.count(i, Position::Row, 0) == 1 {
+            //         col_pos = matrix.find_val(i, Position::Row, 0);
+            //         if !marked.contains(&(i, 'R')) && !marked.contains(&(col_pos, 'C')) {
+            //             marked.push((i, 'R'));
+            //             marked.push((col_pos, 'C'));
+            //             assigned.push((i, col_pos));
+            //         }
+            //     }
+            //     if matrix.count(i, Position::Column, 0) == 1 {
+            //         row_pos = matrix.find_val(i, Position::Column, 0);
+            //         if !marked.contains(&(i, 'C')) && !marked.contains(&(row_pos, 'R')) {
+            //             marked.push((row_pos, 'R'));
+            //             marked.push((i, 'C'));
+            //             assigned.push((row_pos, i));
+            //         }
+            //     }
+            // }
+
+            let zero_pos = matrix.find_pos(0);
+            loop {
+                let mut change_occured= false;
+                for (row, col) in &zero_pos {
+                    // broji kulko je nuli v redu i ignorera one koje su prekrizene
+                    if marked.contains(&(*row, 'R')) || marked.contains(&(*col, 'C')) { continue; }
+                    let zeros_in_row = zero_pos.iter().filter(|(_row, _col)| {
+                        // let is_same = _row == row && _col == col;
+                        let mut count = false;
+                        // if !is_same {
+                        if !marked.contains(&(*_col, 'C')) && _row == row {
+                            count = true;
+                        }
+                        // }
+                        count
+                    }).count();
+
+                    if zeros_in_row == 1 {
+                        marked.push((*row, 'R'));
+                        marked.push((*col, 'C'));
+                        assigned.push((*row, *col));
+                        // println!("{:?}", assigned);
+                        change_occured = true;
+                        break;
                     }
                 }
+                if !change_occured { break; }
             }
 
-            let mut row_pos;
-            for i in 0..matrix.columns {
-                if matrix.count(i, Position::Column, 0) == 1 {
-                    row_pos = matrix.find_val(i, Position::Row, 0);
-                    if !marked.contains(&(i, 'C')) && !marked.contains(&(row_pos, 'R')) {
-                        marked.push((row_pos, 'R'));
-                        marked.push((i, 'C'));
-                        assigned.push((row_pos, i));
+            loop {
+                let mut change_occured= false;
+                for (row, col) in &zero_pos {
+                    // broji kulko je nuli v redu i ignorera one koje su prekrizene
+                    if marked.contains(&(*row, 'R')) || marked.contains(&(*col, 'C')) { continue; }
+                    let zeros_in_col = zero_pos.iter().filter(|(_row, _col)| {
+                        // let mut count = !(_row == row && _col == col);
+                        let mut count = false;
+                        // if count && _col == col {
+                        if !marked.contains(&(*_row, 'R')) && _col == col {
+                            count = true;
+                        }
+                        // }
+                        count
+                    }).count();
+
+                    if zeros_in_col == 1 {
+                        marked.push((*row, 'R'));
+                        marked.push((*col, 'C'));
+                        assigned.push((*row, *col));
+                        // println!("{:?}", assigned);
+                        change_occured = true;
+                        break;
                     }
                 }
+                if !change_occured { break; }
             }
+
+            // let mut col_pos;
+            // for i in 0..matrix.rows {
+            //     if matrix.count(i, Position::Row, 0) == 1 {
+            //         col_pos = matrix.find_val(i, Position::Row, 0);
+            //         if !marked.contains(&(i, 'R')) && !marked.contains(&(col_pos, 'C')) {
+            //             marked.push((i, 'R'));
+            //             marked.push((col_pos, 'C'));
+            //             assigned.push((i, col_pos));
+            //         }
+            //     }
+            // }
+
+            // let mut row_pos;
+            // for i in 0..matrix.columns {
+            //     if matrix.count(i, Position::Column, 0) == 1 {
+            //         row_pos = matrix.find_val(i, Position::Column, 0);
+            //         if !marked.contains(&(i, 'C')) && !marked.contains(&(row_pos, 'R')) {
+            //             marked.push((row_pos, 'R'));
+            //             marked.push((i, 'C'));
+            //             assigned.push((row_pos, i));
+            //         }
+            //     }
+            // }
 
             for i in 0..matrix.rows {
                 if marked.contains(&(i, 'R')) { continue; }
@@ -341,6 +422,9 @@ impl MadarskaMetoda {
         //         break;
         //     }
         // }
+
+        assigned.sort_by(|a, b| a.cmp(&b));
+        // println!("{:?}", assigned);
 
         marked.clear();
 
@@ -417,6 +501,135 @@ impl MadarskaMetoda {
 
         // println!("{:?}", marked);
         // println!("{:?}", assigned);
+        (marked, assigned)
+    }
+
+    fn second_step_refactor(matrix: &Matrix) -> (Crossed, Vec<(usize, usize)>) {
+        let mut marked: Crossed = Vec::new();
+        let mut assigned: Vec<(usize, usize)> = Vec::new();
+
+        let zero_pos = matrix.find_pos(0);
+        loop {
+            let mut change_occured= false;
+            for (row, col) in &zero_pos {
+                if marked.contains(&(*row, 'R')) || marked.contains(&(*col, 'C')) { continue; }
+                let zeros_in_row = zero_pos.iter().filter(|(_row, _col)| {
+                    let mut count = false;
+                    if !marked.contains(&(*_col, 'C')) && _row == row {
+                        count = true;
+                    }
+                    count
+                }).count();
+
+                if zeros_in_row == 1 {
+                    marked.push((*row, 'R'));
+                    marked.push((*col, 'C'));
+                    assigned.push((*row, *col));
+                    change_occured = true;
+                    break;
+                }
+            }
+            if !change_occured { break; }
+        }
+
+        loop {
+            let mut change_occured= false;
+            for (row, col) in &zero_pos {
+                if marked.contains(&(*row, 'R')) || marked.contains(&(*col, 'C')) { continue; }
+                let zeros_in_col = zero_pos.iter().filter(|(_row, _col)| {
+                    let mut count = false;
+                    if !marked.contains(&(*_row, 'R')) && _col == col {
+                        count = true;
+                    }
+                    count
+                }).count();
+
+                if zeros_in_col == 1 {
+                    marked.push((*row, 'R'));
+                    marked.push((*col, 'C'));
+                    assigned.push((*row, *col));
+                    change_occured = true;
+                    break;
+                }
+            }
+            if !change_occured { break; }
+        }
+
+        for i in 0..matrix.rows {
+            if marked.contains(&(i, 'R')) { continue; }
+            for j in 0..matrix.columns {
+                if marked.contains(&(j, 'C')) { continue; }
+                if matrix.matrix[i][j] == 0 {
+                    marked.push((i, 'R'));
+                    marked.push((j, 'C'));
+                    assigned.push((i, j));
+                    break;
+                }
+            }
+        }
+
+        assigned.sort_by(|a, b| a.cmp(&b));
+
+        marked.clear();
+
+        for i in 0..matrix.rows {
+            if assigned.iter().find(|(row, _)| *row == i) == None {
+                marked.push((i, 'R'));
+            }
+        }
+        // println!("{:?}", marked);
+
+        // od tud
+
+        loop {
+            let changed = marked.len();
+
+            for (row_index, identificator) in marked.clone() {
+                if identificator != 'R' { continue; }
+                &matrix.matrix[row_index]
+                .iter()
+                .enumerate()
+                .for_each(|(index, val)| {
+                    if *val == 0 {
+                        if !marked.contains(&(index, 'C')) {
+                            marked.push((index, 'C'));
+                            // println!("{:?}", marked);
+                        }
+                    }
+                });
+            }
+
+            for (col_index, identificator) in marked.clone() {
+                if identificator != 'C' { continue; }
+                let column = matrix.get(Position::Column, col_index);
+                column
+                .iter()
+                .enumerate()
+                .for_each(|(index, _)| {
+                    if assigned.contains(&(index, col_index)) {
+                        if !marked.contains(&(index, 'R')) {
+                            marked.push((index, 'R'));
+                            // println!("{:?}", marked);
+                        }
+                    }
+                });
+            }
+
+            if changed == marked.len() { break; }
+        }
+
+
+        // do tud premeniti
+
+
+        let marked_clone = marked.clone();
+        marked = marked.into_iter().filter(|(_, identificator)| *identificator == 'C').collect();
+        for i in 0..matrix.rows {
+            if !marked_clone.contains(&(i, 'R')) {
+                marked.push((i, 'R'));
+            }
+        }
+
         (marked, assigned)
     }
 
@@ -792,11 +1005,37 @@ mod tests {
             vec![41, 64, 55, 85, 59],
         ]);
 
+        let matrica5 = Matrix::new(vec![
+            vec![25, 21, 26, 59, 96, 6, 19, 15, 73, 91],
+            vec![74, 64, 13, 10, 10, 49, 87, 33, 91, 47],
+            vec![45, 82, 2, 23, 67, 96, 78, 50, 8, 13],
+            vec![97, 59, 61, 23, 59, 15, 62, 42, 39, 45],
+            vec![74, 95, 78, 44, 86, 11, 25, 34, 86, 15],
+            vec![17, 89, 95, 72, 98, 35, 42, 8, 99, 66],
+            vec![19, 18, 75, 52, 84, 28, 7, 49, 32, 47],
+            vec![53, 52, 46, 34, 80, 5, 70, 34, 29, 27],
+            vec![21, 21, 77, 29, 41, 22, 2, 17, 21, 64],
+            vec![31, 24, 61, 87, 55, 27, 47, 40, 37, 73],
+        ]);
+
+        let matrica6 = Matrix::new(vec![
+            vec![28 ,27 ,8 ,15 ,46 ,52 ,55 ,93],
+            vec![51 ,6 ,19 ,18 ,97 ,26 ,9 ,31],
+            vec![30 ,61 ,40 ,74 ,64 ,34 ,36 ,93],
+            vec![31 ,14 ,53 ,40 ,9 ,10 ,57 ,40],
+            vec![85 ,21 ,27 ,77 ,78 ,24 ,24 ,84],
+            vec![16 ,69 ,21 ,69 ,12 ,39 ,26 ,81],
+            vec![57 ,5 ,80 ,65 ,21 ,14 ,68 ,59],
+            vec![49 ,13 ,82 ,78 ,46 ,48 ,88 ,48],
+        ]);
+
         assert_eq!(15, MadarskaMetoda::solve(&matrica));
         assert_eq!(4, MadarskaMetoda::solve(&matrica2));
         assert_eq!(4, MadarskaMetoda::solve(&matrica3));
         assert_eq!(4, MadarskaMetoda::solve_timed(&matrica3));
         assert_eq!(129, MadarskaMetoda::solve_timed(&matrica4));
+        assert_eq!(138, MadarskaMetoda::solve_timed(&matrica5));
+        assert_eq!(155, MadarskaMetoda::solve_timed(&matrica6));
     }
 
     #[test]
