@@ -5,17 +5,15 @@ pub enum Position {
     Column,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Matrix {
     rows: usize,
     columns: usize,
     matrix: Vec<Vec<i32>>,
 }
 
-static mut iteracija: i32 = 0;
-
 impl Matrix {
-    fn new_empty(row: usize, column: usize) -> Self {
+    pub fn new_empty(row: usize, column: usize) -> Self {
         let mut new_matrix: Vec<Vec<i32>> = Vec::with_capacity(row);
         for _ in 0..row {
             new_matrix.push(vec![0;column]);
@@ -26,7 +24,7 @@ impl Matrix {
             matrix: new_matrix,
         }
     }
-    fn new(data: Vec<Vec<i32>>) -> Self {
+    pub fn new(data: Vec<Vec<i32>>) -> Self {
         Self {
             rows: data.len(),
             columns: data[0].len(),
@@ -56,100 +54,58 @@ impl Matrix {
     fn find_min_col(&self, index: usize) -> i32 {
         *self.get(Position::Column, index).iter().min().unwrap()
     }
-
-    fn count(&self, index: usize, position: Position, value: i32) -> usize {
-        match position {
-            Position::Row => {
-                return self.matrix[index].iter().filter(|x| **x == value).count();
-            },
-            Position::Column => {
-                let mut count: usize = 0;
-                let matrix = &self.matrix;
-                for i in 0..self.columns {
-                    if matrix[i][index] == value {
-                        count += 1;
-                    }
-                }
-                return count;
-            },
-        }
-    }
-
-    fn find_pos(&self, value: i32) -> Vec<(usize, usize)> {
-        let mut positions = Vec::new();
-        for i in 0..self.rows {
-            for j in 0..self.columns {
-                if self.matrix[i][j] == value {
-                    positions.push((i, j));
-                }
-            }
-        }
-        positions.sort_by(|a, b| a.cmp(&b));
-        positions
-    }
-
-    fn find_val(&self, index: usize, position: Position, value: i32) -> usize {
-        let mut pos = 0;
-
-        match position {
-            Position::Row => {
-                for i in 0..self.rows {
-                    if self.matrix[index][i] == value {
-                        pos = i;
-                        break;
-                    }
-                }
-                return pos;
-            },
-            Position::Column => { 
-                for i in 0..self.columns {
-                    if self.matrix[i][index] == value {
-                        pos = i;
-                        break;
-                    }
-                }
-                return pos;
-            },
-        }
-    }
-
-    fn get_matrix(&self) -> &Vec<Vec<i32>> {
-        &self.matrix
-    }
 }
-
-type Crossed = Vec<(usize, char)>;
 
 pub struct MadarskaMetoda { }
 
 impl MadarskaMetoda {
-    pub fn solve(starting_matrix: &Matrix) -> i32 {
+
+    pub fn solve(starting_matrix: &Matrix) -> (i32, Matrix) {
         let mut calculating_matrix = Matrix::new(starting_matrix.matrix.clone());
 
         calculating_matrix = Self::first_step(calculating_matrix);
-        let mut assigned: Vec<(usize, usize)>;
+        let final_mask: Matrix;
         loop {
-            let (crossed, _assigned) = Self::second_step_refactor(&calculating_matrix);
-            assigned = _assigned;
-            if assigned.len() == starting_matrix.rows {
+            let assignment_mask = Self::get_assignment(&calculating_matrix);
+            
+            let mut count = 0;
+            for row in 0..assignment_mask.rows {
+                for col in 0..assignment_mask.columns {
+                    if assignment_mask.matrix[row][col] == 1 {
+                        count += 1;
+                    }
+                }
+            }
+
+            if count == starting_matrix.rows {
+                final_mask = assignment_mask;
                 break;
             }
-            calculating_matrix = Self::third_step(calculating_matrix, &crossed);
+
+            let (crossed_rows, crossed_cols) = Self::second_step(&calculating_matrix, assignment_mask);
+
+            calculating_matrix = Self::third_step(calculating_matrix, &crossed_rows, &crossed_cols);
         }
 
         let mut result = 0;
-        assigned.sort_by(|a, b| a.cmp(&b));
-        assigned.iter().enumerate().for_each(|(index ,(row, col))| { result += starting_matrix.matrix[*row][*col] });
-        result
+
+        for row in 0..starting_matrix.rows {
+            for col in 0..starting_matrix.columns {
+                if final_mask.matrix[row][col] == 0 { continue; }
+                result += starting_matrix.matrix[row][col];
+            }
+        }
+        println!("{:?}", final_mask);
+        (result, final_mask)
     }
 
-    pub fn solve_timed(starting_matrix: &Matrix) -> i32 {
+    pub fn solve_timed(starting_matrix: &Matrix) -> (i32, Matrix) {
         let timer = Instant::now();
         let res = Self::solve(starting_matrix);
         println!("{:?}s", timer.elapsed().as_micros() as f64 / 1000000 as f64 );
         res
     }
-    
+        
     fn first_step(mut matrix: Matrix) -> Matrix {
         for i in 0..matrix.rows {
             let min = matrix.find_min_row(i);
@@ -167,29 +123,52 @@ impl MadarskaMetoda {
         matrix
     }
 
-    fn second_step_refactor(matrix: &Matrix) -> (Crossed, Vec<(usize, usize)>) {
+    fn get_assignment(matrix: &Matrix) -> Matrix {
+        let mut assigned = Matrix::new_empty(matrix.rows, matrix.columns);
+        let mut crossed_rows = vec![0; matrix.rows];
+        let mut crossed_columns = vec![0; matrix.columns];
 
-        let mut marked: Crossed = Vec::new();
-        let mut assigned: Vec<(usize, usize)> = Vec::new();
-
-        let zero_pos = matrix.find_pos(0);
 
         loop {
-            let mut change_occured= false;
-            for (row, col) in &zero_pos {
-                if marked.contains(&(*row, 'R')) || marked.contains(&(*col, 'C')) { continue; }
-                let zeros_in_row = zero_pos.iter().filter(|(_row, _col)| {
-                    let mut count = false;
-                    if !marked.contains(&(*_col, 'C')) && _row == row {
-                        count = true;
-                    }
-                    count
-                }).count();
+            let mut change_occured = false;
 
-                if zeros_in_row == 1 {
-                    marked.push((*row, 'R'));
-                    marked.push((*col, 'C'));
-                    assigned.push((*row, *col));
+            for row in 0..matrix.rows {
+                let mut count = 0;
+                let mut last_col = 0;
+                if crossed_rows[row] == 1 { continue; }
+                for col in 0..matrix.columns {
+                    if crossed_columns[col] == 1 { continue; }
+                    if matrix.matrix[row][col] == 0 {
+                        count += 1;
+                        last_col = col;
+                    }
+                }
+                if count == 1 {
+                    crossed_rows[row] = 1;
+                    crossed_columns[last_col] = 1;
+                    assigned.matrix[row][last_col] = 1;
+                    change_occured = true;
+                    break;
+                }
+            }
+    
+            if change_occured { continue; }
+    
+            for col in 0..matrix.columns {
+                let mut count = 0;
+                let mut last_row = 0;
+                if crossed_columns[col] == 1 { continue; }
+                for row in 0..matrix.rows {
+                    if crossed_rows[row] == 1 { continue; }
+                    if matrix.matrix[row][col] == 0 {
+                        count += 1;
+                        last_row = row;
+                    }
+                }
+                if count == 1 {
+                    crossed_rows[last_row] = 1;
+                    crossed_columns[col] = 1;
+                    assigned.matrix[last_row][col] = 1;
                     change_occured = true;
                     break;
                 }
@@ -197,127 +176,108 @@ impl MadarskaMetoda {
 
             if change_occured { continue; }
 
-            for (row, col) in &zero_pos {
-                if marked.contains(&(*row, 'R')) || marked.contains(&(*col, 'C')) { continue; }
-                let zeros_in_col = zero_pos.iter().filter(|(_row, _col)| {
-                    let mut count = false;
-                    if !marked.contains(&(*_row, 'R')) && _col == col {
-                        count = true;
+            for row in 0..matrix.rows {
+                if crossed_rows[row] == 1 { continue; }
+                for col in 0..matrix.columns {
+                    if crossed_columns[col] == 1 { continue; }
+                    if matrix.matrix[row][col] == 0 {
+                        crossed_rows[row] = 1;
+                        crossed_columns[col] = 1;
+                        assigned.matrix[row][col] = 1;
+                        change_occured = true;
+                        break;
                     }
-                    count
-                }).count();
-
-                if zeros_in_col == 1 {
-                    marked.push((*row, 'R'));
-                    marked.push((*col, 'C'));
-                    assigned.push((*row, *col));
-                    change_occured = true;
+                }
+                if change_occured == true {
                     break;
                 }
             }
-
-            if change_occured { continue; }
-
-            for (row, col) in &zero_pos {
-                if assigned.contains(&(*row, *col)) { continue; }
-                if marked.contains(&(*row, 'R')) || marked.contains(&(*col, 'C')) { continue; }
-                    marked.push((*row, 'R'));
-                    marked.push((*col, 'C'));
-                    assigned.push((*row, *col));
-                    change_occured = true;
-                    break;
-            }
-
-
-            if change_occured { continue; }
 
             if !change_occured { break; }
         }
 
-        assigned.sort_by(|a, b| a.cmp(&b));
+        assigned
+    }
 
-        marked.clear();
+    fn second_step(matrix: &Matrix, assigned: Matrix) -> (Vec<i32>, Vec<i32>) {
 
-        for i in 0..matrix.rows {
-            if assigned.iter().find(|(row, _)| *row == i) == None && !marked.contains(&(i, 'R')) {
-                marked.push((i, 'R'));
+        let mut crossed_rows = vec![1; matrix.rows];
+        let mut crossed_columns = vec![0; matrix.columns];
+
+        for row in 0..assigned.rows {
+            for col in 0..assigned.columns {
+                if assigned.matrix[row][col] == 1 { crossed_rows[row] = 0; break; }
             }
         }
 
         loop {
-            let changed = marked.len();
 
-            for (row_index, identificator) in marked.clone() {
-                if identificator != 'R' { continue; }
-                &matrix.matrix[row_index]
-                .iter()
-                .enumerate()
-                .for_each(|(index, val)| {
-                    if *val == 0 {
-                        if !marked.contains(&(index, 'C')) {
-                            marked.push((index, 'C'));
+            let mut change_occured = false;
+
+            for row in 0..assigned.rows {
+                if crossed_rows[row] == 1 {
+                    for col in 0..assigned.columns {
+                        if crossed_columns[col] == 1 { continue; }
+                        if matrix.matrix[row][col] == 0 {
+                            crossed_columns[col] = 1;
+                            change_occured = true;
                         }
                     }
-                });
+                }
             }
 
-            for (col_index, identificator) in marked.clone() {
-                if identificator != 'C' { continue; }
-                let column = matrix.get(Position::Column, col_index);
-                column
-                .iter()
-                .enumerate()
-                .for_each(|(index, _)| {
-                    if assigned.contains(&(index, col_index)) {
-                        if !marked.contains(&(index, 'R')) {
-                            marked.push((index, 'R'));
+            for col in 0..assigned.columns {
+                if crossed_columns[col] == 1 {
+                    for row in 0..assigned.rows {
+                        if crossed_rows[row] == 1 { continue; }
+                        if assigned.matrix[row][col] == 1 {
+                            crossed_rows[row] = 1;
+                            change_occured = true;
                         }
                     }
-                });
+                }
             }
 
-
-            if changed == marked.len() { break; }
+            if !change_occured { break; }
         }
 
+        crossed_rows.iter_mut().for_each(|val| if *val == 0 { *val = 1} else { *val = 0});
 
-        let marked_clone = marked.clone();
-        marked = marked.into_iter().filter(|(_, identificator)| *identificator == 'C').collect();
-        for i in 0..matrix.rows {
-            if !marked_clone.contains(&(i, 'R')) {
-                marked.push((i, 'R'));
-            }
-        }
-
-        (marked, assigned)
+        (crossed_rows, crossed_columns)
     }
 
-    fn third_step(mut matrix: Matrix, crossed: &Crossed) -> Matrix {
-        let min = Self::find_min_in_non_crossed(&matrix, crossed);
-        for i in 0..matrix.rows {
-            for j in 0..matrix.columns {
-                if crossed.contains(&(i, 'R')) && crossed.contains(&(j, 'C')) {
-                    matrix.matrix[i][j] += min;
-                } else if !crossed.contains(&(i, 'R')) && !crossed.contains(&(j, 'C')) {
-                    matrix.matrix[i][j] -= min;
-                }
+    fn third_step(mut matrix: Matrix, crossed_rows: &Vec<i32>, crossed_cols: &Vec<i32>) -> Matrix {
+        let min = Self::minimum(&matrix, crossed_rows, crossed_cols);
+        for row in 0..matrix.rows {
+            if crossed_rows[row] == 1 { continue; }
+            for col in 0..matrix.columns {
+                matrix.matrix[row][col] -= min;
+            }
+        }
+
+        for col in 0..matrix.columns {
+            if crossed_cols[col] == 0 { continue; }
+            for row in 0..matrix.rows {
+                matrix.matrix[row][col] += min;
             }
         }
         matrix
     }
 
-    fn find_min_in_non_crossed(matrix: &Matrix, crosssed: &Crossed) -> i32 {
+    fn minimum(matrix: &Matrix, crossed_rows: &Vec<i32>, crossed_cols: &Vec<i32>) -> i32 {
         let mut non_crossed = Vec::new();
-        for i in 0..matrix.rows {
-            if crosssed.contains(&(i, 'R')) { continue; }
-            for j in 0..matrix.columns {
-                if crosssed.contains(&(j, 'C')) { continue; }
-                non_crossed.push(matrix.matrix[i][j].clone());
+        for row in 0..crossed_rows.len() {
+            if crossed_rows[row] == 1 { continue; }
+            for col in 0..crossed_cols.len() {
+                if crossed_cols[col] == 1 { continue; }
+                non_crossed.push(matrix.matrix[row][col]);
             }
         }
 
         *non_crossed.iter().min().unwrap()
     }
+
+
 }
 /**************************************************/
 /*                    TESTS                       */
@@ -425,44 +385,48 @@ mod tests {
     }
 
     #[test]
-    fn second_step_test() {
-        let mut matrica = Matrix {
-            rows: 4,
-            columns: 4,
-            matrix: vec![
-                vec![10, 8,  4, 5],
-                vec![ 6, 2, 12, 3],
-                vec![ 3, 5,  6, 9],
-                vec![ 4, 7,  8, 6],
-            ]
-        };
+    fn get_assignment_test() {
+        let matrica = Matrix::new(vec![
+            vec![7, 4,  0, 0],
+            vec![5, 0, 10, 0],
+            vec![0, 1,  2, 4],
+            vec![0, 2,  3, 0],
+        ]);
 
-        let crossed_test = vec![(0, 'C'), (0, 'R'), (1, 'R')];
-        matrica = MadarskaMetoda::first_step(matrica);
-        // assert_eq!(crossed_test, MadarskaMetoda::second_step(&matrica));
-
+        let test_assignment = Matrix::new(vec![
+            vec![0, 0, 1, 0],
+            vec![0, 1, 0, 0],
+            vec![1, 0, 0, 0],
+            vec![0, 0, 0, 1],
+        ]);
+        assert_eq!(test_assignment.matrix, MadarskaMetoda::get_assignment(&matrica).matrix); 
     }
 
     #[test]
-    fn find_min_in_non_crossed_test() {
-        let mut matrica = Matrix {
-            rows: 4,
-            columns: 4,
-            matrix: vec![
-                vec![10, 8,  4, 5],
-                vec![ 6, 2, 12, 3],
-                vec![ 3, 5,  6, 9],
-                vec![ 4, 7,  8, 6],
-            ]
-        };
-        matrica = MadarskaMetoda::first_step(matrica);
-        let (crossed_test, _) = MadarskaMetoda::second_step_refactor(&matrica);
-        assert_eq!(1, MadarskaMetoda::find_min_in_non_crossed(&matrica, &crossed_test));
+    fn second_step_test() {
+        let matrica = Matrix::new(vec![
+            vec![7, 4,  0, 0],
+            vec![5, 0, 10, 0],
+            vec![0, 1,  2, 4],
+            vec![0, 2,  3, 0],
+        ]);
+
+        let test_assignment = Matrix::new(vec![
+            vec![0, 0, 1, 0],
+            vec![0, 1, 0, 0],
+            vec![1, 0, 0, 0],
+            vec![0, 0, 0, 1],
+        ]);
+
+        let crossed_rows = vec![1, 1, 1, 1];
+        let crossed_cols = vec![0, 0, 0, 0];
+        assert_eq!((crossed_rows, crossed_cols), MadarskaMetoda::second_step(&matrica, test_assignment));
+
     }
 
     #[test]
     fn third_step_test() {
-        let mut matrica = Matrix {
+        let matrica = Matrix {
             rows: 4,
             columns: 4,
             matrix: vec![
@@ -482,11 +446,10 @@ mod tests {
                 vec![0, 2,  3, 0],
             ]
         };
-        let crossed_test = vec![(0, 'R'), (1, 'R'), (0, 'C')];
-        matrica = MadarskaMetoda::third_step(matrica, &crossed_test);
-        assert_eq!(after.matrix, matrica.matrix);
+        let crossed_rows = vec![1, 1, 0, 0];
+        let crossed_cols = vec![1, 0, 0, 0];
+        assert_eq!(after.matrix, MadarskaMetoda::third_step(matrica, &crossed_rows, &crossed_cols).matrix);
     }
-
     #[test]
     fn solve_test() {
         let matrica = Matrix {
@@ -554,13 +517,68 @@ mod tests {
             vec![49 ,13 ,82 ,78 ,46 ,48 ,88 ,48],
         ]);
 
-        assert_eq!(15, MadarskaMetoda::solve(&matrica));
-        assert_eq!(4, MadarskaMetoda::solve(&matrica2));
-        assert_eq!(4, MadarskaMetoda::solve(&matrica3));
-        assert_eq!(4, MadarskaMetoda::solve_timed(&matrica3));
-        assert_eq!(129, MadarskaMetoda::solve_timed(&matrica4));
-        assert_eq!(138, MadarskaMetoda::solve_timed(&matrica5));
-        assert_eq!(155, MadarskaMetoda::solve_timed(&matrica6));
+        let matrica7 = Matrix::new(vec![
+            vec![1, 2],
+            vec![3, 4],
+        ]);
+
+        let matrica8 = Matrix::new(vec![
+            vec![167,153,151,194,72,192,45,102,83,146,116,14,51,43,162,143,133,119,155,189],
+            vec![11,12,167,75,72,24,152,34,57,99,22,33,145,179,179,185,163,139,83,111],
+            vec![70,173,72,19,115,83,164,17,101,90,32,120,128,197,49,196,11,101,122,185],
+            vec![92,123,93,91,172,69,77,93,87,195,122,196,77,140,163,110,116,175,121,194],
+            vec![190,136,154,12,24,96,32,96,172,61,65,159,97,185,142,11,132,70,100,169],
+            vec![113,61,35,62,72,165,104,65,199,49,16,78,132,108,151,34,74,30,139,83],
+            vec![141,19,122,17,126,186,172,110,135,85,130,158,197,83,32,190,155,168,172,182],
+            vec![77,56,32,43,163,19,118,164,193,21,160,59,17,120,189,80,46,128,123,50],
+            vec![109,195,164,166,11,164,151,106,160,111,182,94,97,106,184,17,37,144,25,38],
+            vec![181,197,166,145,161,136,159,132,21,198,135,17,146,141,113,167,164,85,103,54],
+            vec![66,143,24,124,49,165,90,152,122,197,14,167,101,141,146,102,88,10,17,126],
+            vec![176,78,190,97,55,48,125,137,114,184,163,89,24,114,138,68,200,179,69,105],
+            vec![175,71,180,56,98,10,111,104,82,120,136,35,88,17,33,44,62,183,91,20],
+            vec![37,148,160,167,161,168,30,42,52,134,16,25,18,122,88,178,19,12,54,103],
+            vec![55,54,165,110,77,101,64,183,29,64,12,195,104,39,137,148,190,86,181,137],
+            vec![57,143,46,145,12,105,83,102,106,119,166,142,137,80,55,60,41,12,32,18],
+            vec![71,85,176,186,132,13,115,178,152,124,79,121,94,62,57,148,127,56,193,116],
+            vec![52,88,184,185,105,179,78,87,52,91,135,180,124,184,68,117,115,141,108,88],
+            vec![51,76,15,137,21,199,182,142,33,26,20,87,148,110,104,120,152,154,74,27],
+            vec![83,53,138,37,89,66,103,34,86,23,95,54,51,93,48,168,158,32,191,124],
+        ]);
+		
+		let matrica9 = Matrix::new(vec![
+            vec![2, 9, 2, 7, 1],
+            vec![6, 8, 7, 6, 1],
+			vec![4, 6, 5, 3, 1],
+			vec![4, 2, 7, 3, 1],
+			vec![5, 3, 9, 5, 1],
+        ]);
+
+        let matrica10 = Matrix::new(vec![
+            vec![294, 947, 342, 547, 233, 752, 611, 538, 196, 697, 983, 555],
+            vec![283, 486, 375, 823, 580, 555, 693, 213, 319, 523, 651, 414],
+            vec![882, 255, 518, 793, 989, 919, 449, 744, 412, 268, 939, 221],
+            vec![557, 238, 323, 592, 716, 239, 977, 484, 782, 744, 289, 702],
+            vec![390, 707, 541, 600, 273, 550, 684, 755, 948, 418, 912, 931],
+            vec![639, 392, 376, 774, 758, 630, 718, 363, 978, 805, 612, 490],
+            vec![412, 961, 572, 576, 804, 591, 592, 531, 446, 155, 579, 732],
+            vec![947, 300, 593, 442, 372, 911, 902, 514, 132, 667, 628, 120],
+            vec![629, 114, 159, 798, 956, 103, 369, 739, 511, 332, 127, 229],
+            vec![583, 284, 852, 248, 144, 990, 385, 307, 535, 150, 741, 158],
+            vec![379, 932, 670, 383, 935, 653, 717, 482, 767, 760, 284, 346],
+            vec![193, 720, 698, 867, 237, 617, 493, 413, 928, 889, 761, 132],
+        ]);
+
+        assert_eq!(15, MadarskaMetoda::solve(&matrica).0);
+        assert_eq!(4, MadarskaMetoda::solve(&matrica2).0);
+        assert_eq!(4, MadarskaMetoda::solve(&matrica3).0);
+        assert_eq!(4, MadarskaMetoda::solve_timed(&matrica3).0);
+        assert_eq!(129, MadarskaMetoda::solve_timed(&matrica4).0);
+        assert_eq!(138, MadarskaMetoda::solve_timed(&matrica5).0);
+        assert_eq!(155, MadarskaMetoda::solve_timed(&matrica6).0);
+        assert_eq!(5, MadarskaMetoda::solve_timed(&matrica7).0);
+        assert_eq!(459, MadarskaMetoda::solve_timed(&matrica8).0);
+		assert_eq!(13, MadarskaMetoda::solve_timed(&matrica9).0);
+		assert_eq!(2848, MadarskaMetoda::solve_timed(&matrica10).0);
     }
 
     #[test]
@@ -668,8 +686,7 @@ mod tests {
                 vec![76, 27, 79, 62, 54, 19, 61, 85, 88, 89, 64, 34, 76, 55, 8, 11, 28, 8, 73, 77, 32, 84, 41, 15, 99, 76, 97, 12, 6, 4, 17, 32, 38, 91, 89, 9, 14, 96, 78, 69, 51, 31, 4, 48, 62, 97, 70, 99, 77, 68, 48, 52, 54, 40, 25, 53, 37, 81, 36, 50, 9, 17, 91, 97, 62, 88, 11, 55, 29, 39, 37, 75, 58, 81, 3, 8, 43, 6, 60, 37, 62, 45, 66, 98, 3, 23, 40, 72, 11, 32, 84, 36, 92, 74, 76, 4, 71, 95, 27, 24],
                 vec![31, 67, 59, 3, 13, 36, 67, 82, 99, 63, 11, 26, 51, 25, 68, 34, 43, 29, 88, 57, 95, 1, 84, 57, 31, 47, 70, 17, 19, 78, 100, 18, 24, 24, 76, 14, 21, 57, 44, 23, 55, 89, 67, 68, 56, 99, 14, 62, 88, 3, 5, 77, 70, 79, 1, 69, 69, 53, 49, 95, 80, 20, 3, 19, 73, 51, 24, 84, 97, 38, 1, 99, 83, 15, 29, 38, 60, 99, 44, 18, 94, 50, 38, 99, 34, 9, 17, 46, 92, 26, 43, 40, 9, 3, 29, 18, 49, 50, 64, 74],
             ]);
-
 		
-        assert_eq!(236, MadarskaMetoda::solve_timed(&matrica));
+        assert_eq!(236, MadarskaMetoda::solve_timed(&matrica).0);
     }
 }
