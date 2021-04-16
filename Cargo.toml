@@ -1,6 +1,6 @@
 [package]
 name = "madarska_metoda"
-version = "0.1.1"
+version = "0.1.2"
 authors = ["Hrvoje <hrvoje.lesar1@hotmail.com>"]
 edition = "2018"
 
