@@ -7,9 +7,9 @@ pub enum Position {
 
 #[derive(Debug, Clone)]
 pub struct Matrix {
-    rows: usize,
-    columns: usize,
-    matrix: Vec<Vec<i32>>,
+    pub rows: usize,
+    pub columns: usize,
+    pub matrix: Vec<Vec<i32>>,
 }
 
 impl Matrix {
