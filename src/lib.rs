@@ -24,11 +24,65 @@ impl Matrix {
             matrix: new_matrix,
         }
     }
+    
     pub fn new(data: Vec<Vec<i32>>) -> Self {
-        Self {
+        let mut new_matrix = Self {
             rows: data.len(),
             columns: data[0].len(),
             matrix: data,
+        };
+        new_matrix.check_row_lengths();
+        new_matrix.make_square();
+        new_matrix
+    }
+
+    fn make_square(&mut self) {
+        if self.rows == self.columns { return; }
+        if self.rows > self.columns {
+            let diff = self.rows - self.columns;
+            for _ in 0..diff {
+                self.add_column();
+            }
+        } else if self.rows < self.columns {
+            let diff = self.columns - self.rows;
+            for _ in 0..diff {
+                self.add_row();
+            }
+        }
+    }
+
+    fn add_column(&mut self) {
+        for row in 0..self.rows {
+            self.matrix[row].push(0);
+        }
+    }
+
+    fn add_row(&mut self) {
+        self.matrix.push(vec![0; self.columns]);
+    }
+
+    fn check_row_lengths(&mut self) {
+        let mut max_row_len = self.matrix.len();
+        let mut min_row_len = self.matrix.len();
+        
+        for row in 0..self.rows {
+            if self.matrix[row].len() > max_row_len {
+                max_row_len = self.matrix[row].len();
+            }
+            if self.matrix[row].len() < min_row_len {
+                min_row_len = self.matrix[row].len();
+            }
+        }
+
+        if max_row_len != min_row_len {
+            self.columns = max_row_len;
+            for row in 0..self.rows {
+                if self.matrix[row].len() < max_row_len {
+                    for _ in 0..(max_row_len - self.matrix[row].len()) {
+                        self.matrix[row].push(0);
+                    }
+                }
+            }
         }
     }
 
@@ -95,6 +149,8 @@ impl MadarskaMetoda {
                 result += starting_matrix.matrix[row][col];
             }
         }
+
+        #[cfg(debug_assertions)]
         println!("{:?}", final_mask);
         (result, final_mask)
     }
@@ -288,7 +344,7 @@ mod tests {
     use super::*;
 
     const RED: usize = 5;
-    const STUPAC: usize = 6;
+    const STUPAC: usize = 5;
 
     #[test]
     fn new_empty_matrix() {
@@ -688,5 +744,38 @@ mod tests {
             ]);
 		
         assert_eq!(236, MadarskaMetoda::solve_timed(&matrica).0);
+    }
+
+    #[test]
+    fn square_test() {
+        let matrica = Matrix::new(vec![
+            vec![1, 2],
+        ]);
+
+        let matrica2 = Matrix::new(vec![
+            vec![1],
+            vec![2],
+        ]);
+
+        assert_eq!(vec![vec![1, 2], vec![0, 0]], matrica.matrix);
+        assert_eq!(vec![vec![1, 0], vec![2, 0]], matrica2.matrix);
+    }
+
+    #[test]
+    fn row_len_test() {
+        let matrica = Matrix::new(vec![
+            vec![1],
+            vec![1, 2],
+        ]);
+
+        let matrica2 = Matrix::new(vec![
+            vec![1, 2],
+            vec![1],
+            vec![]
+        ]);
+
+
+        assert_eq!(vec![vec![1, 0], vec![1, 2]], matrica.matrix);
+        assert_eq!(vec![vec![1, 2, 0], vec![1, 0, 0], vec![0, 0, 0]], matrica2.matrix);
     }
 }
