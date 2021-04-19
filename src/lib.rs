@@ -42,11 +42,13 @@ impl Matrix {
             let diff = self.rows - self.columns;
             for _ in 0..diff {
                 self.add_column();
+                self.columns += 1;
             }
         } else if self.rows < self.columns {
             let diff = self.columns - self.rows;
             for _ in 0..diff {
                 self.add_row();
+                self.rows += 1;
             }
         }
     }
