@@ -86,6 +86,21 @@ impl Matrix {
         }
     }
 
+    fn invert_matrix_values(&self) -> Self {
+        let mut m = Self {
+            rows: self.rows,
+            columns: self.columns,
+            matrix: self.matrix.clone()
+        };
+
+        for row in 0..m.rows {
+            for col in 0..m.columns {
+                m.matrix[row][col] *= -1;
+            }
+        }
+        m
+    }
+
     fn get(&self, position: Position, index: usize) -> Vec<i32> {
         match position {
             Position::Row => {
@@ -114,8 +129,17 @@ pub struct MadarskaMetoda { }
 
 impl MadarskaMetoda {
 
-    pub fn solve(starting_matrix: &Matrix) -> (i32, Matrix) {
+    pub fn solve(starting_matrix: &Matrix, maximize: Option<bool>) -> (i32, Matrix) {
+        let mut do_max = false;
+        if let Some(maximize) = maximize {
+            do_max = maximize;
+        }
+
         let mut calculating_matrix = Matrix::new(starting_matrix.matrix.clone());
+
+        if do_max {
+            calculating_matrix = calculating_matrix.invert_matrix_values();
+        }
 
         calculating_matrix = Self::first_step(calculating_matrix);
         let final_mask: Matrix;
@@ -155,9 +179,9 @@ impl MadarskaMetoda {
         (result, final_mask)
     }
 
-    pub fn solve_timed(starting_matrix: &Matrix) -> (i32, Matrix) {
+    pub fn solve_timed(starting_matrix: &Matrix, maximize: Option<bool>) -> (i32, Matrix) {
         let timer = Instant::now();
-        let res = Self::solve(starting_matrix);
+        let res = Self::solve(starting_matrix, maximize);
         println!("{:?}s", timer.elapsed().as_micros() as f64 / 1000000 as f64 );
         res
     }
@@ -624,17 +648,17 @@ mod tests {
             vec![193, 720, 698, 867, 237, 617, 493, 413, 928, 889, 761, 132],
         ]);
 
-        assert_eq!(15, MadarskaMetoda::solve(&matrica).0);
-        assert_eq!(4, MadarskaMetoda::solve(&matrica2).0);
-        assert_eq!(4, MadarskaMetoda::solve(&matrica3).0);
-        assert_eq!(4, MadarskaMetoda::solve_timed(&matrica3).0);
-        assert_eq!(129, MadarskaMetoda::solve_timed(&matrica4).0);
-        assert_eq!(138, MadarskaMetoda::solve_timed(&matrica5).0);
-        assert_eq!(155, MadarskaMetoda::solve_timed(&matrica6).0);
-        assert_eq!(5, MadarskaMetoda::solve_timed(&matrica7).0);
-        assert_eq!(459, MadarskaMetoda::solve_timed(&matrica8).0);
-		assert_eq!(13, MadarskaMetoda::solve_timed(&matrica9).0);
-		assert_eq!(2848, MadarskaMetoda::solve_timed(&matrica10).0);
+        assert_eq!(15, MadarskaMetoda::solve(&matrica, None).0);
+        assert_eq!(4, MadarskaMetoda::solve(&matrica2, None).0);
+        assert_eq!(4, MadarskaMetoda::solve(&matrica3, None).0);
+        assert_eq!(4, MadarskaMetoda::solve_timed(&matrica3, Some(false)).0);
+        assert_eq!(129, MadarskaMetoda::solve_timed(&matrica4, Some(false)).0);
+        assert_eq!(138, MadarskaMetoda::solve_timed(&matrica5, Some(false)).0);
+        assert_eq!(155, MadarskaMetoda::solve_timed(&matrica6, Some(false)).0);
+        assert_eq!(5, MadarskaMetoda::solve_timed(&matrica7, Some(false)).0);
+        assert_eq!(459, MadarskaMetoda::solve_timed(&matrica8, Some(false)).0);
+		assert_eq!(13, MadarskaMetoda::solve_timed(&matrica9, Some(false)).0);
+		assert_eq!(2848, MadarskaMetoda::solve_timed(&matrica10, Some(false)).0);
     }
 
     #[test]
@@ -743,7 +767,7 @@ mod tests {
                 vec![31, 67, 59, 3, 13, 36, 67, 82, 99, 63, 11, 26, 51, 25, 68, 34, 43, 29, 88, 57, 95, 1, 84, 57, 31, 47, 70, 17, 19, 78, 100, 18, 24, 24, 76, 14, 21, 57, 44, 23, 55, 89, 67, 68, 56, 99, 14, 62, 88, 3, 5, 77, 70, 79, 1, 69, 69, 53, 49, 95, 80, 20, 3, 19, 73, 51, 24, 84, 97, 38, 1, 99, 83, 15, 29, 38, 60, 99, 44, 18, 94, 50, 38, 99, 34, 9, 17, 46, 92, 26, 43, 40, 9, 3, 29, 18, 49, 50, 64, 74],
             ]);
 		
-        assert_eq!(236, MadarskaMetoda::solve_timed(&matrica).0);
+        assert_eq!(236, MadarskaMetoda::solve_timed(&matrica, Some(false)).0);
     }
 
     #[test]
@@ -777,5 +801,27 @@ mod tests {
 
         assert_eq!(vec![vec![1, 0], vec![1, 2]], matrica.matrix);
         assert_eq!(vec![vec![1, 2, 0], vec![1, 0, 0], vec![0, 0, 0]], matrica2.matrix);
+    }
+
+    #[test]
+    fn invert_matrix_values_text() {
+        let matrica = Matrix::new(vec![
+            vec![1, 2],
+            vec![2, 4],
+        ]);
+
+        let matrica = matrica.invert_matrix_values();
+
+        assert_eq!(vec![vec![-1, -2], vec![-2, -4]], matrica.matrix);
+    }
+
+    #[test]
+    fn solve_max() {
+        let matrica = Matrix::new(vec![
+            vec![1, 2],
+            vec![2, 4],
+        ]);
+
+        assert_eq!(5, MadarskaMetoda::solve(&matrica, Some(true)).0);
     }
 }
