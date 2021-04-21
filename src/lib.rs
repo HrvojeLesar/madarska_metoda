@@ -164,7 +164,11 @@ impl MadarskaMetoda {
 
             let (crossed_rows, crossed_cols) = Self::second_step(&calculating_matrix, assignment_mask);
 
-            calculating_matrix = Self::third_step(calculating_matrix, &crossed_rows, &crossed_cols);
+
+            calculating_matrix = match Self::third_step(calculating_matrix, &crossed_rows, &crossed_cols) {
+                Ok(m) => m,
+                Err(_) => return (-1, Matrix::new_empty(1, 1)),
+            }
         }
 
         let mut result = 0;
@@ -328,8 +332,12 @@ impl MadarskaMetoda {
         (crossed_rows, crossed_columns)
     }
 
-    fn third_step(mut matrix: Matrix, crossed_rows: &Vec<i32>, crossed_cols: &Vec<i32>) -> Matrix {
+    fn third_step(mut matrix: Matrix, crossed_rows: &Vec<i32>, crossed_cols: &Vec<i32>) -> Result<Matrix, String> {
         let min = Self::minimum(&matrix, crossed_rows, crossed_cols);
+        let min = match min {
+            Some(m) => m,
+            None => return Err("Min is 0".to_owned()),
+        };
         for row in 0..matrix.rows {
             if crossed_rows[row] == 1 { continue; }
             for col in 0..matrix.columns {
@@ -343,10 +351,10 @@ impl MadarskaMetoda {
                 matrix.matrix[row][col] += min;
             }
         }
-        matrix
+        Ok(matrix)
     }
 
-    fn minimum(matrix: &Matrix, crossed_rows: &Vec<i32>, crossed_cols: &Vec<i32>) -> i32 {
+    fn minimum(matrix: &Matrix, crossed_rows: &Vec<i32>, crossed_cols: &Vec<i32>) -> Option<i32> {
         let mut non_crossed = Vec::new();
         for row in 0..crossed_rows.len() {
             if crossed_rows[row] == 1 { continue; }
@@ -356,7 +364,7 @@ impl MadarskaMetoda {
             }
         }
 
-        *non_crossed.iter().min().unwrap()
+        non_crossed.into_iter().min()
     }
 
 
@@ -530,7 +538,7 @@ mod tests {
         };
         let crossed_rows = vec![1, 1, 0, 0];
         let crossed_cols = vec![1, 0, 0, 0];
-        assert_eq!(after.matrix, MadarskaMetoda::third_step(matrica, &crossed_rows, &crossed_cols).matrix);
+        assert_eq!(after.matrix, MadarskaMetoda::third_step(matrica, &crossed_rows, &crossed_cols).unwrap().matrix);
     }
     #[test]
     fn solve_test() {
