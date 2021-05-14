@@ -153,7 +153,6 @@ pub struct MadarskaMetoda {
     assignment_count: usize,
     crossed_rows: Vec<i32>,
     crossed_columns: Vec<i32>,
-    result: i32,
     backup: Option<Backup>,
     possible_assignments: Vec<(usize, usize)>,
 }
@@ -168,7 +167,6 @@ impl MadarskaMetoda {
             assignment_count: 0,
             crossed_rows: Vec::new(),
             crossed_columns: Vec::new(),
-            result: 0,
             backup: None,
             possible_assignments: Vec::new(),
         }
@@ -219,14 +217,15 @@ impl MadarskaMetoda {
             if found_other_optimal_assignment { break; }
         }
 
+        let mut result = 0;
         for row in 0..self.starting_matrix.rows {
             for col in 0..self.starting_matrix.columns {
                 if self.assignment_mask.matrix[row][col] == 0 { continue; }
-                self.result += self.starting_matrix.matrix[row][col];
+                result += self.starting_matrix.matrix[row][col];
             }
         }
 
-        self.result
+        result
     }
 
     pub fn solve_timed(starting_matrix: &Matrix, maximize: Option<bool>) -> i32 {
@@ -478,6 +477,301 @@ impl MadarskaMetoda {
     }
 }
 
+struct Path {
+    path: Vec<[usize;2]>,
+    path_count: usize,
+    starting_row: usize,
+    starting_column: usize,
+}
+
+impl Path {
+    fn new(row: usize) -> Self {
+        Self {
+            path: vec![[0;2];row * 2],
+            path_count: 0,
+            starting_row: 0,
+            starting_column: 0,
+        }
+    }
+}
+
+pub struct MadarskaMetodaMunkres {
+    starting_matrix: Matrix,
+    calculating_matrix: Matrix,
+    pub assignment_mask: Matrix,
+    path: Path,
+    crossed_rows: Vec<usize>,
+    crossed_columns: Vec<usize>,
+    step: usize,
+}
+
+impl MadarskaMetodaMunkres {
+
+    pub fn new(matrica: &Matrix) -> Self {
+        MadarskaMetodaMunkres {
+            starting_matrix: matrica.clone(),
+            calculating_matrix: matrica.clone(),
+            assignment_mask: Matrix::new_empty(matrica.rows, matrica.columns),
+            path: Path::new(matrica.rows),
+            crossed_rows: vec![0;matrica.rows],
+            crossed_columns: vec![0;matrica.columns],
+            step: 1,
+        }
+    }
+
+    fn first_step(&mut self) {
+
+        for i in 0..self.calculating_matrix.rows {
+            let min = self.calculating_matrix.find_min_row(i);
+            for j in 0..self.calculating_matrix.rows {
+                self.calculating_matrix.matrix[i][j] -= min;
+            }
+        }
+
+        self.step = 2;
+    }
+
+    fn second_step(&mut self) {
+        for row in 0..self.calculating_matrix.rows {
+            for col in 0..self.calculating_matrix.columns {
+                if self.calculating_matrix.matrix[row][col] == 0 && self.crossed_rows[row] == 0 && self.crossed_columns[col] == 0 {
+                    self.assignment_mask.matrix[row][col] = 1;
+                    self.crossed_rows[row] = 1;
+                    self.crossed_columns[col] = 1;
+                }
+            }
+        }
+
+        self.reset_crossed();
+
+        self.step = 3;
+    }
+
+    fn third_step(&mut self) {
+        for row in 0..self.calculating_matrix.rows {
+            for col in 0..self.calculating_matrix.columns {
+                if self.assignment_mask.matrix[row][col] == 1 {
+                    self.crossed_columns[col] = 1;
+                }
+            }
+        }
+
+        let mut col_count = 0;
+
+        for col in 0..self.calculating_matrix.columns {
+            if self.crossed_columns[col] == 1 {
+                col_count += 1;
+            }
+        }
+
+        if col_count >= self.calculating_matrix.columns || col_count >= self.calculating_matrix.rows {
+            self.step = 7;
+        } else {
+            self.step = 4;
+        }
+    }
+
+    fn get_noncrossed_zero(&self) -> Option<(usize, usize)>{
+        for _row in 0..self.calculating_matrix.rows {
+            if self.crossed_rows[_row] == 1 { continue; }
+            for _col in 0..self.calculating_matrix.columns {
+                if self.crossed_columns[_col] == 1 { continue; }
+                if self.calculating_matrix.matrix[_row][_col] == 0 {
+                    return Some((_row, _col));
+                }
+            }
+        }
+
+        None
+    }
+
+    fn is_star_in_row(&mut self, row: usize) -> bool {
+        let mut output = false;
+        for col in 0..self.calculating_matrix.columns {
+            if self.assignment_mask.matrix[row][col] == 1 {
+                output = true;
+            }
+        }
+        output
+    }
+
+    fn get_star_in_row(&mut self, row: usize) -> Option<usize> {
+        for col in 0..self.calculating_matrix.columns {
+            if self.assignment_mask.matrix[row][col] == 1 {
+                return Some(col);
+            }
+        }
+        None
+    }
+
+    fn fourth_step(&mut self) {
+        loop {
+            let opt = self.get_noncrossed_zero();
+
+            if opt.is_none() {
+                self.step = 6;
+                break;
+            } else {
+                let (row, mut column) = opt.unwrap();
+                self.assignment_mask.matrix[row][column] = 2;
+                if self.is_star_in_row(row) {
+                    match self.get_star_in_row(row) {
+                        Some(c) => column = c,
+                        None => panic!("There should be a star in row, is_star_in_row(row) is wrong!"),
+                    }
+                    self.crossed_rows[row] = 1;
+                    self.crossed_columns[column] = 0;
+                } else {
+                    self.step = 5;
+                    self.path.starting_row = row;
+                    self.path.starting_column = column;
+                    break;
+                }
+            }
+        }
+    }
+
+    fn get_star_row_index(&mut self, column: usize) -> Option<usize> {
+        for row in 0..self.calculating_matrix.rows {
+            if self.assignment_mask.matrix[row][column] == 1 {
+                return Some(row);
+            }
+        }
+        None
+    }
+
+    fn get_prime_column_index(&mut self, row: usize) -> Option<usize> {
+        for col in 0..self.calculating_matrix.columns {
+            if self.assignment_mask.matrix[row][col] == 2 {
+                return Some(col);
+            }
+        }
+        None
+    }
+
+    fn unstar_starred_star_primed(&mut self) {
+        for p in 0..self.path.path_count {
+            if self.assignment_mask.matrix[self.path.path[p][0]][self.path.path[p][1]] == 1 {
+                self.assignment_mask.matrix[self.path.path[p][0]][self.path.path[p][1]] = 0;
+            } else {
+                self.assignment_mask.matrix[self.path.path[p][0]][self.path.path[p][1]] = 1;
+            }
+        }
+    }
+
+    fn reset_crossed(&mut self) {
+        for i in 0..self.calculating_matrix.rows {
+            self.crossed_rows[i] = 0;
+            self.crossed_columns[i] = 0;
+        }
+    }
+
+    fn reset_prime(&mut self) {
+        for row in 0..self.calculating_matrix.rows {
+            for col in 0..self.calculating_matrix.columns {
+                if self.assignment_mask.matrix[row][col] == 2 {
+                    self.assignment_mask.matrix[row][col] = 0;
+                }
+            }
+        }
+    }
+
+    fn fifth_step(&mut self) {
+        self.path.path_count = 1;
+        self.path.path[0][0] = self.path.starting_row;
+        self.path.path[0][1] = self.path.starting_column;
+
+        loop {
+            let row_opt = self.get_star_row_index(self.path.path[self.path.path_count - 1][1]);
+            if let Some(row) = row_opt {
+                self.path.path_count += 1;
+                self.path.path[self.path.path_count - 1][0] = row;
+                self.path.path[self.path.path_count - 1][1] = self.path.path[self.path.path_count - 2][1];
+            } else {
+                break;
+            }
+            let col_opt = self.get_prime_column_index(self.path.path[self.path.path_count - 1][0]);
+            if let Some(col) = col_opt {
+                self.path.path_count += 1;
+                self.path.path[self.path.path_count - 1][0] = self.path.path[self.path.path_count - 2][0];
+                self.path.path[self.path.path_count - 1][1] = col;
+            }
+        }
+
+        self.unstar_starred_star_primed();
+        self.reset_crossed();
+        self.reset_prime();
+        self.step = 3;
+    }
+
+    fn get_min_value(&mut self) -> i32 {
+        let mut min = None;
+        for row in 0..self.calculating_matrix.rows {
+            for col in 0..self.calculating_matrix.columns {
+                if self.crossed_rows[row] == 0 && self.crossed_columns[col] == 0 {
+                    if min.is_none() {
+                        min = Some(self.calculating_matrix.matrix[row][col]);
+                    } else if min.unwrap() > self.calculating_matrix.matrix[row][col] {
+                        min = Some(self.calculating_matrix.matrix[row][col]);
+                    }
+                }
+            }
+        }
+        min.unwrap()
+    }
+
+    fn sixth_step(&mut self) {
+        let min = self.get_min_value();
+        for row in 0..self.calculating_matrix.rows {
+            for col in 0..self.calculating_matrix.columns {
+                if self.crossed_rows[row] == 1 {
+                    self.calculating_matrix.matrix[row][col] += min;
+                }
+                if self.crossed_columns[col] == 0 {
+                    self.calculating_matrix.matrix[row][col] -= min;
+                }
+            }
+            self.step = 4;
+        }
+    }
+
+    fn get_result(&mut self) -> i32 {
+        let mut result = 0;
+        for row in 0..self.calculating_matrix.rows {
+            for col in 0..self.calculating_matrix.columns {
+                if self.assignment_mask.matrix[row][col] == 1 {
+                    result += self.starting_matrix.matrix[row][col];
+                }
+            }
+        }
+        result 
+    }
+
+    pub fn solve(&mut self, maximize: Option<bool>) -> i32 {
+        let mut do_max = false;
+        if let Some(maximize) = maximize {
+            do_max = maximize;
+        }
+
+        if do_max {
+            self.calculating_matrix = self.calculating_matrix.invert_matrix_values();
+        }
+
+        loop {
+            match self.step {
+                1 => self.first_step(),
+                2 => self.second_step(),
+                3 => self.third_step(),
+                4 => self.fourth_step(),
+                5 => self.fifth_step(),
+                6 => self.sixth_step(),
+                7 => return self.get_result(),
+                _ => panic!("Invalid step"),
+            }
+        }
+    }
+
+}
 
 /**************************************************/
 /*                    TESTS                       */
@@ -863,6 +1157,39 @@ mod tests {
         assert_eq!(1, mm.solve(None));
         let mut mm = MadarskaMetoda::new(&matrica16);
         assert_eq!(2, mm.solve(None));
+
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
+        assert_eq!(15, mm.solve(None));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica2);
+        assert_eq!(4, mm.solve(None));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica3);
+        assert_eq!(4, mm.solve(None));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica4);
+        assert_eq!(129, mm.solve(None));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica5);
+        assert_eq!(138, mm.solve(None));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica6);
+        assert_eq!(155, mm.solve(None));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica7);
+        assert_eq!(5, mm.solve(None));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica8);
+        assert_eq!(459, mm.solve(None));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica9);
+        assert_eq!(13, mm.solve(None));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica10);
+        assert_eq!(2848, mm.solve(None));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica11);
+        assert_eq!(50, mm.solve(None));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica12);
+        assert_eq!(0, mm.solve(None));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica13);
+        assert_eq!(20, mm.solve(None));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica14);
+        assert_eq!(7, mm.solve(None));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica15);
+        assert_eq!(1, mm.solve(None));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica16);
+        assert_eq!(2, mm.solve(None));
     }
 
     #[test]
@@ -973,6 +1300,9 @@ mod tests {
 		
         let mut mm = MadarskaMetoda::new(&matrica);
         assert_eq!(236, mm.solve(Some(false)));
+
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
+        assert_eq!(236, mm.solve(Some(false)));
     }
 
     #[test]
@@ -1028,6 +1358,8 @@ mod tests {
         ]);
 
         let mut mm = MadarskaMetoda::new(&matrica);
+        assert_eq!(5, mm.solve(Some(true)));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
         assert_eq!(5, mm.solve(Some(true)));
     }
     
@@ -1095,5 +1427,255 @@ mod tests {
         assert_eq!(11, mm.solve(Some(false)));
         let mut mm = MadarskaMetoda::new(&matrica2);
         assert_eq!(30, mm.solve(Some(true)));
+
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
+        assert_eq!(1, mm.solve(Some(false)));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
+        assert_eq!(341, mm.solve(Some(true)));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica2);
+        assert_eq!(11, mm.solve(Some(false)));
+        let mut mm = MadarskaMetodaMunkres::new(&matrica2);
+        assert_eq!(30, mm.solve(Some(true)));
+    }
+
+    #[test]
+    fn munkres_first_step() {
+        let matrica = Matrix::new(vec![
+            vec![1, 2, 3],
+            vec![2, 4, 6],
+            vec![3, 6, 9],
+        ]);
+
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
+        mm.first_step();
+
+        let expected_result = vec![
+            vec![0, 1, 2],
+            vec![0, 2, 4],
+            vec![0, 3, 6],
+        ];
+
+        assert_eq!(expected_result, mm.calculating_matrix.matrix);
+    }
+
+    #[test]
+    fn munkres_second_step() {
+        let matrica = Matrix::new(vec![
+            vec![0, 1, 2],
+            vec![0, 2, 4],
+            vec![0, 3, 6],
+        ]);
+
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
+        mm.second_step();
+
+        let expected_result = vec![
+            vec![1, 0, 0],
+            vec![0, 0, 0],
+            vec![0, 0, 0],
+        ];
+
+        assert_eq!(expected_result, mm.assignment_mask.matrix);
+    }
+
+    #[test]
+    fn munkres_get_noncrossed_zero() {
+        let matrica = Matrix::new(vec![
+            vec![0, 0, 1],
+            vec![0, 1, 3],
+            vec![0, 2, 5],
+        ]);
+
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
+        mm.crossed_columns[0] = 1;
+
+        let opt = mm.get_noncrossed_zero();
+        let (row, col) = opt.unwrap();
+        assert_eq!((0, 1), (row, col));
+        assert_ne!((0, 0), (row, col));
+    }
+
+    #[test]
+    fn munkres_is_star_in_row() {
+        let matrica = Matrix::new(vec![
+            vec![0, 0, 1],
+            vec![0, 1, 3],
+            vec![0, 2, 5],
+        ]);
+
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
+        mm.assignment_mask.matrix[0][0] = 1;
+
+        assert_eq!(true, mm.is_star_in_row(0));
+        assert_eq!(false, mm.is_star_in_row(1));
+        assert_eq!(false, mm.is_star_in_row(2));
+    }
+
+    #[test]
+    fn munkres_get_star_in_row() {
+        let matrica = Matrix::new(vec![
+            vec![0, 0, 1],
+            vec![0, 1, 3],
+            vec![0, 2, 5],
+        ]);
+
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
+        mm.assignment_mask.matrix[0][0] = 1;
+        
+        let star = mm.get_star_in_row(0).unwrap();
+        assert_eq!(0, star);
+    }
+
+    #[test]
+    fn munkres_fourth_step() {
+        let matrica = Matrix::new(vec![
+            vec![0, 0, 1],
+            vec![0, 1, 3],
+            vec![0, 2, 5],
+        ]);
+
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
+        mm.assignment_mask.matrix[0][0] = 1;
+        mm.crossed_columns[0] = 1;
+        mm.fourth_step();
+
+        let expected_assignment_mask = vec![
+            vec![1, 2, 0],
+            vec![2, 0, 0],
+            vec![0, 0, 0],
+        ];
+
+        let expected_crossed_rows = vec![1, 0, 0];
+        let expected_crossed_columns = vec![0, 0, 0];
+
+        assert_eq!(expected_assignment_mask, mm.assignment_mask.matrix);
+        assert_eq!(expected_crossed_rows, mm.crossed_rows);
+        assert_eq!(expected_crossed_columns, mm.crossed_columns);
+    }
+
+    #[test]
+    fn munkres_get_star_row_index() {
+        let matrica = Matrix::new(vec![
+            vec![0, 0, 1],
+            vec![0, 1, 3],
+            vec![0, 2, 5],
+        ]);
+
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
+        mm.assignment_mask.matrix[0][0] = 1;
+
+        assert_eq!(0, mm.get_star_row_index(0).unwrap());
+        assert_eq!(None, mm.get_star_row_index(1));
+        assert_eq!(None, mm.get_star_row_index(2));
+    }
+
+    #[test]
+    fn munkres_get_prime_column_index() {
+        let matrica = Matrix::new(vec![
+            vec![0, 0, 1],
+            vec![0, 1, 3],
+            vec![0, 2, 5],
+        ]);
+
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
+        mm.assignment_mask.matrix[0][0] = 1;
+        mm.assignment_mask.matrix[0][1] = 2;
+        mm.assignment_mask.matrix[1][0] = 2;
+
+        assert_eq!(1, mm.get_prime_column_index(0).unwrap());
+        assert_eq!(0, mm.get_prime_column_index(1).unwrap());
+        assert_eq!(None, mm.get_prime_column_index(2));
+    }
+
+    #[test]
+    fn munkres_unstar_starred_star_primed() {
+        let matrica = Matrix::new(vec![
+            vec![0, 0, 1],
+            vec![0, 1, 3],
+            vec![0, 2, 5],
+        ]);
+
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
+        mm.assignment_mask.matrix[0][0] = 1;
+        mm.assignment_mask.matrix[0][1] = 2;
+        mm.assignment_mask.matrix[1][0] = 2;
+
+        mm.path.path_count = 3;
+        mm.path.path[0][0] = 1;
+        mm.path.path[0][1] = 0;
+        mm.path.path[2][0] = 0;
+        mm.path.path[2][1] = 1;
+
+        mm.unstar_starred_star_primed();
+
+        let expected_assignment = vec![
+            vec![0, 1, 0],
+            vec![1, 0, 0],
+            vec![0, 0, 0],
+        ];
+
+        assert_eq!(expected_assignment, mm.assignment_mask.matrix);
+    }
+
+    #[test]
+    fn munkres_fift_step() {
+        let matrica = Matrix::new(vec![
+            vec![0, 0, 1],
+            vec![0, 1, 3],
+            vec![0, 2, 5],
+        ]);
+
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
+        mm.assignment_mask.matrix[0][0] = 1;
+        mm.assignment_mask.matrix[0][1] = 2;
+        mm.assignment_mask.matrix[1][0] = 2;
+        mm.path.starting_row = 1;
+        mm.path.starting_column = 0;
+
+        mm.fifth_step();
+
+        let expected_assignment = vec![
+            vec![0, 1, 0],
+            vec![1, 0, 0],
+            vec![0, 0, 0],
+        ];
+
+        assert_eq!(expected_assignment, mm.assignment_mask.matrix);
+    }
+
+    #[test]
+    fn munkres_get_min_value() {
+        let matrica = Matrix::new(vec![
+            vec![0, 0, 1],
+            vec![0, 1, 3],
+            vec![0, 2, 5],
+        ]);
+
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
+        mm.crossed_columns = vec![1, 1, 0];
+
+        assert_eq!(1, mm.get_min_value());
+    }
+
+    #[test]
+    fn munkres_sixth_step() {
+        let matrica = Matrix::new(vec![
+            vec![0, 0, 1],
+            vec![0, 1, 3],
+            vec![0, 2, 5],
+        ]);
+
+        let mut mm = MadarskaMetodaMunkres::new(&matrica);
+        mm.crossed_columns = vec![1, 1, 0];
+
+        let expected_matrix = vec![
+            vec![0, 0, 0],
+            vec![0, 1, 2],
+            vec![0, 2, 4],
+        ];
+
+        mm.sixth_step();
+
+        assert_eq!(expected_matrix, mm.calculating_matrix.matrix);
     }
 }
