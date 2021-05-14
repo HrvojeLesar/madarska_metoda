@@ -1,8 +1,5 @@
 use std::time::Instant;
 
-
-static mut iteracija: i32 = 0;
-
 pub enum Position {
     Row,
     Column,
@@ -130,24 +127,21 @@ impl Matrix {
     }
 }
 
+#[derive(Debug, Clone)]
 struct Backup {
     assignment_mask: Matrix,
+    assignment_count: usize,
     crossed_rows: Vec<i32>,
     crossed_columns: Vec<i32>,
-    assignment_count: usize,
-    row: usize,
-    col: usize,
 }
 
 impl Backup {
-    fn new(assignment_mask: &Matrix, crossed_rows: &Vec<i32>, crossed_columns: &Vec<i32>, assignment_count: &usize, row: &usize, col: &usize) -> Self {
+    fn new(madarska_metoda_obj: &MadarskaMetoda) -> Self {
         Self {
-            assignment_mask: assignment_mask.clone(),
-            crossed_rows: crossed_rows.clone(),
-            crossed_columns: crossed_columns.clone(),
-            assignment_count: assignment_count.clone(),
-            row: row.clone(),
-            col: col.clone(),
+            assignment_mask: madarska_metoda_obj.assignment_mask.clone(),
+            assignment_count: madarska_metoda_obj.assignment_count.clone(),
+            crossed_rows: madarska_metoda_obj.crossed_rows.clone(),
+            crossed_columns: madarska_metoda_obj.crossed_columns.clone(),
         }
     }
 }
@@ -156,15 +150,12 @@ pub struct MadarskaMetoda {
     pub starting_matrix: Matrix,
     pub calculating_matrix: Matrix,
     pub assignment_mask: Matrix,
-    pub expected_assignment: Option<usize>,
     assignment_count: usize,
-    assignment_starting_row: usize,
-    assignment_starting_col: usize,
     crossed_rows: Vec<i32>,
     crossed_columns: Vec<i32>,
-    backup_stack: Vec<Backup>,
     result: i32,
-    last_arbitrary_selection_mask: Matrix,
+    backup: Option<Backup>,
+    possible_assignments: Vec<(usize, usize)>,
 }
 
 impl MadarskaMetoda {
@@ -175,14 +166,11 @@ impl MadarskaMetoda {
             calculating_matrix: starting_matrix.clone(),
             assignment_mask: Matrix::new_empty(1, 1),
             assignment_count: 0,
-            expected_assignment: None,
-            assignment_starting_row: 0,
-            assignment_starting_col: 0,
             crossed_rows: Vec::new(),
             crossed_columns: Vec::new(),
-            backup_stack: Vec::new(),
             result: 0,
-            last_arbitrary_selection_mask: Matrix::new_empty(0, 0),
+            backup: None,
+            possible_assignments: Vec::new(),
         }
     }
 
@@ -198,10 +186,8 @@ impl MadarskaMetoda {
 
         self.first_step();
         loop {
-            unsafe {
-                iteracija += 1;
-            }
-            self.get_assignment(true);
+            self.reset_assignment();
+            self.get_assignment();
             
             if self.assignment_count == self.starting_matrix.rows {
                 break;
@@ -209,26 +195,28 @@ impl MadarskaMetoda {
 
             self.second_step();
 
-            // while self.crossed_rows.iter().filter(|var| **var == 1).count() + self.crossed_columns.iter().filter(|var| **var == 1).count() != self.assignment_count {
-            //     if let Some(state) = self.backup_stack.pop() {
-            //         self.load_backup(state);
-            //         self.get_assignment(false);
-            //         self.second_step();
-            //     } else {
-            //         return -2;
-            //     }
-            // }
-            
-            if self.assignment_count == self.starting_matrix.rows {
-                break;
-            }
 
+            let mut found_other_optimal_assignment = false;
             if self.third_step().is_err() {
-                println!("{} | {}", self.crossed_rows.iter().filter(|x| **x == 1).count() + self.crossed_columns.iter().filter(|x| **x == 1).count(), self.assignment_count);
-                return -1;
+                while self.assignment_count != self.starting_matrix.rows {
+                    if self.backup.is_some() {
+                        self.load_backup(self.backup.clone());
+                        if let Some((row, col)) = self.possible_assignments.pop() {
+                            self.make_assignment(row, col);
+                        } else {
+                            return -1;
+                        }
+                        self.get_assignment();
+
+                    }
+                }
+                found_other_optimal_assignment = true;
+                // return -1;
             }
 
-            self.clear_stack();
+            self.backup = None;
+
+            if found_other_optimal_assignment { break; }
         }
 
         for row in 0..self.starting_matrix.rows {
@@ -264,17 +252,8 @@ impl MadarskaMetoda {
         }
     }
 
-    fn get_assignment(&mut self, reset: bool) {
+    fn get_assignment(&mut self) {
         
-        if reset {
-            self.assignment_count = 0;
-            self.assignment_starting_row = 0;
-            self.assignment_starting_col = 0;
-            self.assignment_mask = Matrix::new_empty(self.calculating_matrix.rows, self.calculating_matrix.columns);
-            self.crossed_rows = vec![0; self.calculating_matrix.rows];
-            self.crossed_columns = vec![0; self.calculating_matrix.columns];
-        }
-
         loop {
             let mut change_occured = false;
 
@@ -298,25 +277,25 @@ impl MadarskaMetoda {
     
             if change_occured { continue; }
     
-            // for col in 0..self.calculating_matrix.columns {
-            //     let mut count = 0;
-            //     let mut last_row = 0;
-            //     if self.crossed_columns[col] == 1 { continue; }
-            //     for row in 0..self.calculating_matrix.rows {
-            //         if self.crossed_rows[row] == 1 { continue; }
-            //         if self.calculating_matrix.matrix[row][col] == 0 {
-            //             count += 1;
-            //             last_row = row;
-            //         }
-            //     }
-            //     if count == 1 {
-            //         self.make_assignment(last_row, col);
-            //         change_occured = true;
-            //         break;
-            //     }
-            // }
+            for col in 0..self.calculating_matrix.columns {
+                let mut count = 0;
+                let mut last_row = 0;
+                if self.crossed_columns[col] == 1 { continue; }
+                for row in 0..self.calculating_matrix.rows {
+                    if self.crossed_rows[row] == 1 { continue; }
+                    if self.calculating_matrix.matrix[row][col] == 0 {
+                        count += 1;
+                        last_row = row;
+                    }
+                }
+                if count == 1 {
+                    self.make_assignment(last_row, col);
+                    change_occured = true;
+                    break;
+                }
+            }
 
-            // if change_occured { continue; }
+            if change_occured { continue; }
 
             ////////////////////////////////////////////////////////////////////
 
@@ -365,30 +344,12 @@ impl MadarskaMetoda {
             }
            
             if selection_row.is_some() && selection_col.is_some() {
+                self.create_backup(&arbitrary_selection_mask, selection_row.unwrap(), selection_col.unwrap());
                 self.make_assignment(selection_row.unwrap(), selection_col.unwrap());
                 change_occured = true;
             }
 
-
             ////////////////////////////////////////////////////////////////////
-
-            // for row in self.assignment_starting_row..self.calculating_matrix.rows {
-            //     if self.crossed_rows[row] == 1 { continue; }
-            //     for col in self.assignment_starting_col..self.calculating_matrix.columns {
-            //         if self.crossed_columns[col] == 1 { continue; }
-            //         if self.calculating_matrix.matrix[row][col] == 0 {
-            //             self.backup_stack.push(Backup::new(&self.assignment_mask, &self.crossed_rows, &self.crossed_columns, &self.assignment_count, &row, &col));
-
-            //             self.make_assignment(row, col);
-            //             change_occured = true;
-            //             break;
-            //         }
-            //     }
-            //     self.assignment_starting_col = 0;
-            //     if change_occured { break; }
-            // }
-            // self.assignment_starting_row = 0;
-
 
             if !change_occured { break; }
         }
@@ -481,20 +442,43 @@ impl MadarskaMetoda {
         non_crossed.into_iter().min()
     }
 
-    fn clear_stack(&mut self) {
-        self.backup_stack.clear();
+    fn create_backup(&mut self, arbitrary_selection_mask: &Matrix, row: usize, col: usize) {
+        if self.backup.is_none() {
+            let mut possible_assignments = Vec::new();
+            let min_val = arbitrary_selection_mask.matrix[row][col];
+            for row in 0..arbitrary_selection_mask.rows {
+                if self.crossed_rows[row] == 1 { continue; }
+                for col in 0..arbitrary_selection_mask.columns {
+                    if self.crossed_columns[col] == 1 { continue; }
+                    if arbitrary_selection_mask.matrix[row][col] == min_val {
+                        possible_assignments.push((row, col));
+                    }
+                }
+            }
+            possible_assignments.reverse();
+            self.backup = Some(Backup::new(&self));
+            self.possible_assignments = possible_assignments;
+        }
     }
 
-    fn load_backup(&mut self, backup: Backup) {
-        self.assignment_mask = backup.assignment_mask;
-        self.assignment_count = backup.assignment_count;
-        self.assignment_starting_row = backup.row;
-        self.assignment_starting_col = backup.col + 1;
-        self.crossed_rows = backup.crossed_rows;
-        self.crossed_columns = backup.crossed_columns;
+    fn reset_assignment(&mut self) {
+        self.assignment_count = 0;
+        self.assignment_mask = Matrix::new_empty(self.calculating_matrix.rows, self.calculating_matrix.columns);
+        self.crossed_rows = vec![0; self.calculating_matrix.rows];
+        self.crossed_columns = vec![0; self.calculating_matrix.columns];
     }
 
+    fn load_backup(&mut self, backup: Option<Backup>) {
+        if let Some(backup) = backup {
+            self.assignment_count = backup.assignment_count;
+            self.assignment_mask = backup.assignment_mask;
+            self.crossed_rows = backup.crossed_rows;
+            self.crossed_columns = backup.crossed_columns;
+        }
+    }
 }
+
+
 /**************************************************/
 /*                    TESTS                       */
 /**************************************************/
@@ -619,8 +603,9 @@ mod tests {
         ]);
 
         let mut mm = MadarskaMetoda::new(&matrica);
-        // mm.first_step();
-        mm.get_assignment(true);
+        mm.first_step();
+        mm.reset_assignment();
+        mm.get_assignment();
         assert_eq!(test_assignment.matrix, mm.assignment_mask.matrix);
     }
 
@@ -637,7 +622,8 @@ mod tests {
         let crossed_cols = vec![0, 0, 0, 0];
 
         let mut mm = MadarskaMetoda::new(&matrica);
-        mm.get_assignment(true);
+        mm.reset_assignment();
+        mm.get_assignment();
         mm.second_step();
         assert_eq!((crossed_rows, crossed_cols), (mm.crossed_rows, mm.crossed_columns));
 
@@ -666,7 +652,8 @@ mod tests {
             ]
         };
         let mut mm = MadarskaMetoda::new(&matrica);
-        mm.get_assignment(true);
+        mm.reset_assignment();
+        mm.get_assignment();
         mm.second_step();
         let _ = mm.third_step();
         assert_eq!(after.matrix, mm.calculating_matrix.matrix);
@@ -844,38 +831,38 @@ mod tests {
             vec![0, 1, 1, 0, 1],
         ]);
 
-        // let mut mm = MadarskaMetoda::new(&matrica);
-        // assert_eq!(15, mm.solve(None));
-        // let mut mm = MadarskaMetoda::new(&matrica2);
-        // assert_eq!(4, mm.solve(None));
-        // let mut mm = MadarskaMetoda::new(&matrica3);
-        // assert_eq!(4, mm.solve(None));
-        // let mut mm = MadarskaMetoda::new(&matrica4);
-        // assert_eq!(129, mm.solve(None));
-        // let mut mm = MadarskaMetoda::new(&matrica5);
-        // assert_eq!(138, mm.solve(None));
-        // let mut mm = MadarskaMetoda::new(&matrica6);
-        // assert_eq!(155, mm.solve(None));
-        // let mut mm = MadarskaMetoda::new(&matrica7);
-        // assert_eq!(5, mm.solve(None));
-        // let mut mm = MadarskaMetoda::new(&matrica8);
-        // assert_eq!(459, mm.solve(None));
-        // let mut mm = MadarskaMetoda::new(&matrica9);
-        // assert_eq!(13, mm.solve(None));
-        // let mut mm = MadarskaMetoda::new(&matrica10);
-        // assert_eq!(2848, mm.solve(None));
-        // let mut mm = MadarskaMetoda::new(&matrica11);
-        // assert_eq!(50, mm.solve(None));
-        // let mut mm = MadarskaMetoda::new(&matrica12);
-        // assert_eq!(0, mm.solve(None));
-        // let mut mm = MadarskaMetoda::new(&matrica13);
-        // assert_eq!(20, mm.solve(None));
-        // let mut mm = MadarskaMetoda::new(&matrica14);
-        // assert_eq!(7, mm.solve(None));
+        let mut mm = MadarskaMetoda::new(&matrica);
+        assert_eq!(15, mm.solve(None));
+        let mut mm = MadarskaMetoda::new(&matrica2);
+        assert_eq!(4, mm.solve(None));
+        let mut mm = MadarskaMetoda::new(&matrica3);
+        assert_eq!(4, mm.solve(None));
+        let mut mm = MadarskaMetoda::new(&matrica4);
+        assert_eq!(129, mm.solve(None));
+        let mut mm = MadarskaMetoda::new(&matrica5);
+        assert_eq!(138, mm.solve(None));
+        let mut mm = MadarskaMetoda::new(&matrica6);
+        assert_eq!(155, mm.solve(None));
+        let mut mm = MadarskaMetoda::new(&matrica7);
+        assert_eq!(5, mm.solve(None));
+        let mut mm = MadarskaMetoda::new(&matrica8);
+        assert_eq!(459, mm.solve(None));
+        let mut mm = MadarskaMetoda::new(&matrica9);
+        assert_eq!(13, mm.solve(None));
+        let mut mm = MadarskaMetoda::new(&matrica10);
+        assert_eq!(2848, mm.solve(None));
+        let mut mm = MadarskaMetoda::new(&matrica11);
+        assert_eq!(50, mm.solve(None));
+        let mut mm = MadarskaMetoda::new(&matrica12);
+        assert_eq!(0, mm.solve(None));
+        let mut mm = MadarskaMetoda::new(&matrica13);
+        assert_eq!(20, mm.solve(None));
+        let mut mm = MadarskaMetoda::new(&matrica14);
+        assert_eq!(7, mm.solve(None));
         let mut mm = MadarskaMetoda::new(&matrica15);
         assert_eq!(1, mm.solve(None));
-        // let mut mm = MadarskaMetoda::new(&matrica16);
-        // assert_eq!(2, mm.solve(None));
+        let mut mm = MadarskaMetoda::new(&matrica16);
+        assert_eq!(2, mm.solve(None));
     }
 
     #[test]
@@ -984,7 +971,8 @@ mod tests {
                 vec![31, 67, 59, 3, 13, 36, 67, 82, 99, 63, 11, 26, 51, 25, 68, 34, 43, 29, 88, 57, 95, 1, 84, 57, 31, 47, 70, 17, 19, 78, 100, 18, 24, 24, 76, 14, 21, 57, 44, 23, 55, 89, 67, 68, 56, 99, 14, 62, 88, 3, 5, 77, 70, 79, 1, 69, 69, 53, 49, 95, 80, 20, 3, 19, 73, 51, 24, 84, 97, 38, 1, 99, 83, 15, 29, 38, 60, 99, 44, 18, 94, 50, 38, 99, 34, 9, 17, 46, 92, 26, 43, 40, 9, 3, 29, 18, 49, 50, 64, 74],
             ]);
 		
-        // assert_eq!(236, MadarskaMetoda::solve_timed(&matrica, Some(false)).0);
+        let mut mm = MadarskaMetoda::new(&matrica);
+        assert_eq!(236, mm.solve(Some(false)));
     }
 
     #[test]
@@ -1107,24 +1095,5 @@ mod tests {
         assert_eq!(11, mm.solve(Some(false)));
         let mut mm = MadarskaMetoda::new(&matrica2);
         assert_eq!(30, mm.solve(Some(true)));
-    }
-
-    #[test]
-    fn kek() {
-        let matrica = Matrix::new(vec![
-            vec![29, 46, 43, 32, 42, 30, 22, 8, 8, 17],
-            vec![42, 38, 46, 7, 29, 1, 5, 10, 4, 24],
-            vec![17, 36, 20, 40, 32, 45, 41, 6, 6, 48],
-            vec![11, 44, 37, 42, 45, 32, 20, 48, 19, 30],
-            vec![40, 17, 23, 35, 19, 27, 21, 48, 25, 15],
-            vec![17, 37, 49, 18, 6, 17, 28, 22, 18, 44],
-            vec![46, 36, 39, 43, 12, 28, 19, 41, 34, 1],
-            vec![42, 11, 19, 31, 49, 46, 37, 29, 7, 17],
-            vec![16, 26, 11, 23, 7, 18, 17, 20, 46, 11],
-            vec![48, 35, 18, 31, 14, 48, 45, 31, 26, 8],
-        ]);
-
-        let mut mm = MadarskaMetoda::new(&matrica);
-        assert_eq!(102, mm.solve(None));
     }
 }
