@@ -496,7 +496,7 @@ impl Path {
 }
 
 pub struct MadarskaMetodaMunkres {
-    starting_matrix: Matrix,
+    pub starting_matrix: Matrix,
     calculating_matrix: Matrix,
     pub assignment_mask: Matrix,
     path: Path,
